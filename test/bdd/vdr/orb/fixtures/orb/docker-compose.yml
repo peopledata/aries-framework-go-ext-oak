@@ -1,0 +1,200 @@
+#
+# Copyright SecureKey Technologies Inc. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+version: '2'
+
+services:
+
+  orb1:
+    container_name: testnet.orb.local
+    image: ${ORB_IMAGE}:${ORB_IMAGE_TAG}
+    restart: always
+    environment:
+      - ORB_KMS_ENDPOINT=http://orb.kms:7878
+      - ORB_VCT_URL=http://orb.vct:8077/maple2020
+      - ORB_HOST_URL=0.0.0.0:443
+      - ORB_KMS_TYPE=web
+      - ORB_HOST_METRICS_URL=0.0.0.0:48327
+      - ORB_EXTERNAL_ENDPOINT=https://testnet.orb.local
+      - ORB_TLS_CERTIFICATE=/etc/orb/tls/ec-pubCert.pem
+      - ORB_TLS_KEY=/etc/orb/tls/ec-key.pem
+      - ORB_TLS_CACERTS=/etc/orb/tls/ec-cacert.pem
+      - DID_NAMESPACE=did:orb
+      - ALLOWED_ORIGINS=https://testnet.orb.local,https://orb2,ipns://k51qzi5uqu5dgkmm1afrkmex5mzpu5r774jstpxjmro6mdsaullur27nfxle1q
+      - BATCH_WRITER_TIMEOUT=${BATCH_TIMEOUT}
+      - CAS_TYPE=${CAS_TYPE}
+      - IPFS_URL=ipfs:5001
+      - ANCHOR_CREDENTIAL_ISSUER=https://testnet.orb.local
+      - ANCHOR_CREDENTIAL_URL=https://testnet.orb.local/vc
+      - ANCHOR_CREDENTIAL_SIGNATURE_SUITE=Ed25519Signature2020
+      - ANCHOR_CREDENTIAL_DOMAIN=https://testnet.orb.local
+      - DATABASE_TYPE=mongodb
+      - DATABASE_URL=mongodb://mongodb.shared.com:27017
+      - DATABASE_PREFIX=orb1
+      - KMSSECRETS_DATABASE_PREFIX=orb1kms
+      - ORB_AUTH_TOKENS_DEF=/services/orb/outbox||admin,/services/orb/inbox||admin,/sidetree/.*/operations||admin
+      - ORB_AUTH_TOKENS=admin=ADMIN_TOKEN
+      - HTTP_SIGNATURES_ENABLED=true
+      - UNPUBLISHED_OPERATION_STORE_ENABLED=true
+      - UPDATE_DOCUMENT_STORE_ENABLED=${UPDATE_DOCUMENT_STORE_ENABLED}
+      - RESOLVE_FROM_ANCHOR_ORIGIN=true
+      - INCLUDE_UNPUBLISHED_OPERATIONS_IN_METADATA=true
+      - INCLUDE_PUBLISHED_OPERATIONS_IN_METADATA=true
+    ports:
+      - 443:443
+    command: start
+    volumes:
+      - ../keys/tls:/etc/orb/tls
+    depends_on:
+      - ipfs
+      - mongodb.shared.com
+      - orb.kms
+      - orb.vct
+
+  orb2:
+    container_name: orb2
+    image: ${ORB_IMAGE}:${ORB_IMAGE_TAG}
+    restart: always
+    environment:
+      - ORB_KMS_ENDPOINT=http://orb.kms:7878
+      - ORB_KMS_TYPE=web
+      - ORB_VCT_URL=http://orb.vct:8077/maple2020
+      - ORB_HOST_URL=0.0.0.0:443
+      - ORB_HOST_METRICS_URL=0.0.0.0:48327
+      - ORB_EXTERNAL_ENDPOINT=https://orb2
+      - ORB_TLS_CERTIFICATE=/etc/orb/tls/ec-pubCert.pem
+      - ORB_TLS_KEY=/etc/orb/tls/ec-key.pem
+      - ORB_TLS_CACERTS=/etc/orb/tls/ec-cacert.pem
+      - DID_NAMESPACE=did:orb
+      - ALLOWED_ORIGINS=https://testnet.orb.local,ipns://k51qzi5uqu5dgkmm1afrkmex5mzpu5r774jstpxjmro6mdsaullur27nfxle1q
+      - BATCH_WRITER_TIMEOUT=${BATCH_TIMEOUT}
+      - CAS_TYPE=${CAS_TYPE}
+      - IPFS_URL=ipfs:5001
+      - ANCHOR_CREDENTIAL_ISSUER=https://orb2
+      - ANCHOR_CREDENTIAL_URL=https://orb2/vc
+      - ANCHOR_CREDENTIAL_SIGNATURE_SUITE=Ed25519Signature2020
+      - ANCHOR_CREDENTIAL_DOMAIN=https://orb2
+      - DATABASE_TYPE=mongodb
+      - DATABASE_URL=mongodb://mongodb.shared.com:27017
+      - DATABASE_PREFIX=orb2
+      - ORB_AUTH_TOKENS_DEF=/services/orb/outbox||admin,/services/orb/inbox||admin,/sidetree/.*/operations||admin
+      - ORB_AUTH_TOKENS=admin=ADMIN_TOKEN,read=READ_TOKEN
+      - HTTP_SIGNATURES_ENABLED=true
+      - UNPUBLISHED_OPERATION_STORE_ENABLED=true
+      - UPDATE_DOCUMENT_STORE_ENABLED=${UPDATE_DOCUMENT_STORE_ENABLED}
+      - RESOLVE_FROM_ANCHOR_ORIGIN=true
+      - INCLUDE_UNPUBLISHED_OPERATIONS_IN_METADATA=true
+      - INCLUDE_PUBLISHED_OPERATIONS_IN_METADATA=true
+    ports:
+      - 8009:443
+    command: start
+    volumes:
+      - ../keys/tls:/etc/orb/tls
+    depends_on:
+      - ipfs
+      - mongodb.shared.com
+      - orb.kms
+      - orb.vct
+
+  orb.postgres:
+    container_name: orb.postgres
+    image: postgres:13
+    restart: always
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=test
+    ports:
+      - 5432:5432
+
+  orb.trillian.log.server:
+    container_name: orb.trillian.log.server
+    image: ghcr.io/trustbloc-cicd/vct-log-server:v1.0.0-rc3-snapshot-c395321
+    restart: always
+    command:
+      - --quota_system=noop
+      - --storage_system=postgres
+      - --pg_conn_str=user=postgres host=orb.postgres password=password dbname=test port=5432 sslmode=disable
+      - --rpc_endpoint=0.0.0.0:8090
+      - --logtostderr
+    depends_on:
+      - orb.postgres
+    ports:
+      - 8090:8090
+
+  orb.trillian.log.signer:
+    container_name: orb.trillian.log.signer
+    image: ghcr.io/trustbloc-cicd/vct-log-signer:v1.0.0-rc3-snapshot-c395321
+    restart: always
+    command:
+      - --quota_system=noop
+      - --storage_system=postgres
+      - --pg_conn_str=user=postgres host=orb.postgres password=password dbname=test port=5432 sslmode=disable
+      - --http_endpoint=0.0.0.0:8091
+      - --force_master=true
+      - --logtostderr
+    depends_on:
+      - orb.postgres
+    ports:
+      - 8091:8091
+
+  orb.kms:
+    container_name: orb.kms
+    restart: always
+    image: ghcr.io/trustbloc/kms:v0.1.8
+    environment:
+      - KMS_BASE_URL=http://orb.kms:7878
+      - KMS_HOST=0.0.0.0:7878
+      - KMS_DATABASE_TYPE=mongodb
+      - KMS_DATABASE_URL=mongodb://mongodb.shared.com:27017
+      - KMS_DATABASE_PREFIX=orbkmskeystore
+      - KMS_SECRET_LOCK_TYPE=local
+      - KMS_SECRET_LOCK_KEY_PATH=/etc/kms/secret-lock.key
+    ports:
+      - 7878:7878
+    volumes:
+      - ../keys/kms:/etc/kms
+    depends_on:
+      -  mongodb.shared.com
+    command: start
+
+  orb.vct:
+    container_name: orb.vct
+    image: ghcr.io/trustbloc-cicd/vct:v1.0.0-rc3-snapshot-c395321
+    restart: always
+    environment:
+      - VCT_API_HOST=0.0.0.0:8077
+      - VCT_LOGS=maple2020:rw@orb.trillian.log.server:8090
+      - VCT_KMS_TYPE=web
+      - VCT_KMS_ENDPOINT=http://orb.kms:7878
+      - VCT_DSN=mongodb://mongodb.shared.com:27017
+      - VCT_DATABASE_PREFIX=vct-db
+      - VCT_TLS_CACERTS=/etc/orb/tls/ec-cacert.pem
+      - VCT_TLS_SYSTEMCERTPOOL=true
+    volumes:
+      - ../keys/tls:/etc/orb/tls
+    ports:
+      - 8077:8077
+    command: start
+    depends_on:
+      - orb.kms
+      - orb.trillian.log.server
+
+  ipfs:
+    container_name: ipfs
+    image: ipfs/go-ipfs:v0.8.0
+    ports:
+      - "4001:4001"
+      - "4001:4001/udp"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:5001:5001"
+    volumes:
+      - ./data/ipfs:/data/ipfs
+      - ./export:/export
+
+  mongodb.shared.com:
+    container_name: mongodb.shared.com
+    image: ${MONGODB_IMAGE}:${MONGODB_IMAGE_TAG}
+    ports:
+      - "27017:27017"
